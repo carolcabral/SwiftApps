@@ -22,7 +22,14 @@ class AppFlowController {
             let nextViewController: UIViewController
             switch choice {
             case .central:
-                nextViewController = DiscoveryViewController()
+                let viewController = DiscoveryViewController ()
+                viewController.onConnected = {
+                    let acceletometerViewController = AccelerometerViewController()
+                    acceletometerViewController.central = viewController.central
+                    self?.window.rootViewController = acceletometerViewController
+                    
+                }
+                nextViewController = viewController
             case .peripheral:
                 nextViewController = PeripheralViewController()
             }

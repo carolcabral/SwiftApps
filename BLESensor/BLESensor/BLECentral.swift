@@ -9,12 +9,16 @@
 import Foundation
 import CoreBluetooth
 
-class BLECentral: NSObject, CBCentralManagerDelegate {
+class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     
-    var manager: CBCentralManager!
-    var discoveredPeripherals = [DiscoveredPeripheral]()
+    private var manager: CBCentralManager!
+    private(set) var discoveredPeripherals = [DiscoveredPeripheral]()
+    private var connectedPeripheral: CBPeripheral?
+    private let decoder = JSONDecoder()
+    
     var onDiscovered: (()->Void)?
-    
+    var onDataUpdate: ((AccelerometerData) -> Void)?
+    var onConnected: (() -> Void)?
     override init(){
         super.init()
         manager = CBCentralManager(delegate: self, queue: nil)
@@ -23,6 +27,13 @@ class BLECentral: NSObject, CBCentralManagerDelegate {
     func scanForPeripherals() {
         let options: [String: Any] = [CBCentralManagerScanOptionAllowDuplicatesKey: false]
         manager.scanForPeripherals(withServices: nil, options: nil)
+    }
+    
+    func connect(at index:Int) {
+        guard index >= 0, index < discoveredPeripherals.count else { return }
+        manager.stopScan()
+        manager.connect(discoveredPeripherals[index].peripheral, options: nil)
+        
     }
     
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
@@ -45,4 +56,76 @@ class BLECentral: NSObject, CBCentralManagerDelegate {
         }
         onDiscovered?()
     }
+    
+    func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        connectedPeripheral = peripheral
+        connectedPeripheral?.delegate = self
+        connectedPeripheral?.discoverServices([CBUUID(string: BLEIdentifiers.serviceIdentifier)])
+        onConnected?()
+    }
+    
+    func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+    
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+        if let error = error {
+            print("Peripheral failed to discover services: \(error.localizedDescription)")
+        } else {
+            peripheral.services?.forEach({ (service) in
+                print("Service discovered: \(service)")
+                peripheral.discoverCharacteristics([CBUUID(string: BLEIdentifiers.characteristicIdentifier)], for: service)
+            })
+        }
+    }
+    
+    func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+        if let error = error {
+            print ("Peripheral failed to discover characteristics: \(error.localizedDescription)")
+        } else {
+            service.characteristics?.forEach( { (characteristic) in
+                print ("Characteristic discovered: \(characteristic)")
+                if characteristic.properties.contains(.notify) {
+                    peripheral.setNotifyValue(true, for: characteristic)
+                } else if characteristic.properties.contains(.read) {
+                    peripheral.readValue(for: characteristic)
+                }
+                peripheral.discoverDescriptors(for: characteristic)
+            })
+        }
+    }
+    
+    func peripheral(_ peripheral: CBPeripheral, didDiscoverDescriptorsFor characteristic: CBCharacteristic, error: Error?) {
+        if let error = error {
+            print("Peripheral failed to discover descriptor: \(error.localizedDescription)")
+        } else {
+            characteristic.descriptors?.forEach( { (descriptor) in
+                print("Descriptor discovered: \(descriptor)")
+                peripheral.readValue(for: descriptor)
+            })
+        }
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+        if let error = error {
+            print("Peripheral error updating value for characteristic: \(error.localizedDescription)")
+        } else {
+            if let value = characteristic.value {
+                if let accelerometerData = try? decoder.decode(AccelerometerData.self, from: value) {
+                    print(accelerometerData)
+                    onDataUpdate?(accelerometerData)
+                }
+            }
+            
+        }
+    }
+    func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor descriptor: CBDescriptor, error: Error?) {
+        if let error = error {
+            print("Peripheral error updating value for descriptor: \(error.localizedDescription)")
+        } else {
+                  
+        }
+    }
+    
+    
 }

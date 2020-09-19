@@ -13,7 +13,7 @@ class PeripheralViewController: UIViewController {
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        peripheral = BLEPeripheral()
+        peripheral = BLEPeripheral(dataSource: DeviceAccelerometerDataSource())
         
     }
 }

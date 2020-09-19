@@ -10,6 +10,7 @@ import UIKit
 
 class DiscoveryViewController: UITableViewController {
     var central: BLECentral!
+    var onConnected: (() -> Void)?
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -17,18 +18,14 @@ class DiscoveryViewController: UITableViewController {
         central.onDiscovered = { [weak self] in
             self?.tableView.reloadData()
             }
+        central?.onConnected = { [weak self] in
+            self?.onConnected?()
+        }
         tableView.register(UINib(nibName: "DiscoveredPeripheralCell", bundle: nil), forCellReuseIdentifier: "DiscoveredPeripheralCell")
         
      
     }
-
-    // MARK: - Table view data source
-
-    override func numberOfSections(in tableView: UITableView) -> Int {
-        // #warning Incomplete implementation, return the number of sections
-        return 1
-    }
-
+    
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         // #warning Incomplete implementation, return the number of rows
         return central.discoveredPeripherals.count
@@ -46,5 +43,9 @@ class DiscoveryViewController: UITableViewController {
         
         return cell
         
+    }
+    
+    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        central.connect(at: indexPath.row)
     }
 }

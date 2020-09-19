@@ -14,14 +14,23 @@ class BLEPeripheral: NSObject, CBPeripheralManagerDelegate {
 
     private var manager: CBPeripheralManager!
     private var characteristic: CBMutableCharacteristic!
+    private let encoder = JSONEncoder()
     
-    override init() {
+    private var dataSource: AccelerometerDataSource
+    
+    
+    init(dataSource: AccelerometerDataSource) {
+        self.dataSource = dataSource
         super.init()
         manager = CBPeripheralManager(delegate: self, queue: nil)
+        self.dataSource.onUpdate = { [weak self] data in
+            self?.update(with: data)
+        }
+        self.dataSource.start()
     }
     func setup() {
         let characteristicUUID = CBUUID(string: BLEIdentifiers.characteristicIdentifier)
-        characteristic = CBMutableCharacteristic(type: characteristicUUID, properties: [.read], value: nil, permissions: [.readable])
+        characteristic = CBMutableCharacteristic(type: characteristicUUID, properties: [.read, .notify], value: nil, permissions: [.readable])
         
         let descriptor = CBMutableDescriptor(type: CBUUID(string: CBUUIDCharacteristicFormatString), value: "BLESensor prototype")
         
@@ -33,6 +42,15 @@ class BLEPeripheral: NSObject, CBPeripheralManagerDelegate {
     
         manager.add(service)
         
+    }
+    
+    func update(with data: AccelerometerData){
+        if let payload = try? encoder.encode(data) {
+            characteristic.value = payload
+            manager.updateValue(payload, for: characteristic, onSubscribedCentrals: nil)
+        } else {
+            print("Error enconding AccelerometerData")
+        }
     }
     
     func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
@@ -65,6 +83,24 @@ class BLEPeripheral: NSObject, CBPeripheralManagerDelegate {
             print("Could not start advertising: \(error.localizedDescription)")
         } else {
             print("Peripheral started advertising")
+        }
+    }
+    
+    func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveRead request: CBATTRequest) {
+        if !request.characteristic.uuid.isEqual(characteristic.uuid) {
+            peripheral.respond(to: request, withResult: .requestNotSupported)
+        } else {
+            guard let value = characteristic.value else {
+                peripheral.respond(to: request, withResult: .invalidAttributeValueLength)
+                return
+            }
+            
+            if request.offset > value.count {
+                peripheral.respond(to: request, withResult: .invalidOffset)
+            } else {
+                request.value = value.subdata(in: request.offset..<value.count-request.offset)
+                peripheral.respond(to: request, withResult: .success)
+            }
         }
     }
 }
